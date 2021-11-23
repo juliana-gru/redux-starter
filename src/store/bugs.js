@@ -2,32 +2,35 @@ import { createSlice } from "@reduxjs/toolkit";
 //with createSlice you don't have to explicitly create actions on a reducer.
 import { createSelector } from 'reselect';
 import { apiCallBegan } from './api';
-
-let lastId = 0
+import moment from 'moment';
 
 const slice = createSlice({
   name: "bugs",
   initialState: {
     list: [],
     loading: false,
-    lastFetch: null
+    lastFetch: null //for caching
   },
   reducers: {
+    bugsRequested: (bugs, action) => {
+      bugs.loading = true;
+    },
+    bugsRequestFailed: (bugs, action) => {
+      bugs.loading = false;
+    },
     // maps actions => action handlers
     bugsReceived: (bugs, action) => {
       bugs.list = action.payload;
+      bugs.loading = false;
+      bugs.lastFetch = Date.now();
     },
     bugAdded: (bugs, action) => {
       //you can write mutating code here cuz the redux toolkit will transform it into immutable
-      bugs.list.push({
-        id: ++lastId,
-        description: action.payload.description,
-        resolved: false
-      });
+      bugs.list.push(action.payload);
     },
 
     bugAssignedToUser: (bugs, action) => {
-      const { bugId, userId } = action.payload;
+      const { id: bugId, userId } = action.payload;
       const index = bugs.list.findIndex(bug => bug.id === bugId);
       bugs.list[index].userId = userId;
     },
@@ -43,16 +46,58 @@ const slice = createSlice({
   }
 });
 
-export const { bugAdded, bugResolved, bugRemoved, bugAssignedToUser, bugsReceived } = slice.actions;
+const { // these event actions shouldn't be exported because are internal to the app.
+  bugAdded, 
+  bugResolved, 
+  bugRemoved, 
+  bugAssignedToUser, 
+  bugsReceived,
+  bugsRequested,
+  bugsRequestFailed } = slice.actions;
+
 export default slice.reducer;
+
+// Having the command actions in another module would require the export of the event actions (reducers). By the principle of cohesion, keep the actions and the reducers together.
 
 //Action creators
 const url = "/bugs";
-export const loadBugs = () => apiCallBegan({
+
+export const loadBugs = () => (dispatch, getState) => {
+  //caching
+  const { lastFetch } = getState().entities.bugs;
+
+  const diffInMins = moment().diff(moment(lastFetch), 'minutes');
+
+  if (diffInMins < 10) return; //as best practice keep the time you want the caching to be valid in a config file
+
+  dispatch(apiCallBegan({
+    url,
+    onStart: bugsRequested.type,
+    onSuccess: bugsReceived.type,
+    onError: bugsRequestFailed.type
+  }));
+};
+
+export const addBug = bug => apiCallBegan({
   url,
-  onSuccess: bugsReceived.type,
+  method: "post",
+  data: bug,
+  onSuccess: bugAdded.type
 });
 
+export const resolveBug = id => apiCallBegan({
+  url: url + "/" + id,
+  method: "patch",
+  data: { resolved: true },
+  onSuccess: bugResolved.type
+})
+
+export const assignBugToUser = (bugId, userId) => apiCallBegan({
+  url: url + "/" + bugId,
+  method: "patch",
+  data: { userId },
+  onSuccess: bugAssignedToUser.type
+})
 
 
 //Selector
