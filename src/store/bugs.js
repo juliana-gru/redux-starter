@@ -70,7 +70,7 @@ export const loadBugs = () => (dispatch, getState) => {
 
   if (diffInMins < 10) return; //as best practice keep the time you want the caching to be valid in a config file
 
-  dispatch(apiCallBegan({
+  return dispatch(apiCallBegan({
     url,
     onStart: bugsRequested.type,
     onSuccess: bugsReceived.type,
