@@ -8,7 +8,7 @@ const api = ({ dispatch }) => next => async action => {
   
   if (onStart) dispatch({ type: onStart });
 
-  next(action);
+  return next(action);
 
   try {
     const response = await axios.request({
